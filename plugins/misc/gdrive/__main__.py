@@ -19,14 +19,17 @@ from datetime import datetime
 from functools import wraps
 from json import dumps
 from mimetypes import guess_type
-from urllib.parse import quote
+from typing import Optional
+from urllib.parse import quote, urlparse, parse_qs
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from httplib2 import Http
 from oauth2client.client import (
-    OAuth2WebServerFlow, HttpAccessTokenRefreshError, FlowExchangeError)
+    OAuth2Credentials, OAuth2WebServerFlow, HttpAccessTokenRefreshError, FlowExchangeError)
+
+from pyrogram.types import LinkPreviewOptions
 
 from userge import userge, Message, config, get_collection, pool
 from userge.plugins.misc.download import url_download, tg_download
@@ -34,13 +37,13 @@ from userge.utils import humanbytes, time_formatter, is_url
 from userge.utils.exceptions import ProcessCanceled
 from .. import gdrive
 
-_CREDS: object = None
-_AUTH_FLOW: object = None
+_CREDS: Optional[OAuth2Credentials] = None
+_AUTH_FLOW: Optional[OAuth2WebServerFlow] = None
 _PARENT_ID = ""
 OAUTH_SCOPE = ["https://www.googleapis.com/auth/drive",
                "https://www.googleapis.com/auth/drive.file",
                "https://www.googleapis.com/auth/drive.metadata"]
-REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob"
+REDIRECT_URI = "http://localhost:5000"
 G_DRIVE_DIR_MIME_TYPE = "application/vnd.google-apps.folder"
 G_DRIVE_FILE_LINK = "📄 <a href='https://drive.google.com/open?id={}'>{}</a> __({})__"
 G_DRIVE_FOLDER_LINK = "📁 <a href='https://drive.google.com/drive/folders/{}'>{}</a> __(folder)__"
@@ -94,10 +97,11 @@ def creds_dec(func):
     async def wrapper(self):
         # pylint: disable=protected-access
         if _CREDS:
-            await _refresh_creds()
+            if _CREDS.access_token_expired:
+                await _refresh_creds()
             await func(self)
         else:
-            await self._message.edit("Please run `.gsetup` first", del_in=5)
+            await self._message.edit("Please run `.gsetup` first", del_in=5)  # skipcq: PYL-W0212
     return wrapper
 
 
@@ -246,7 +250,7 @@ class _GDrive:
                     eta = round((f_size - uploaded) / speed)
                     tmp = \
                         "__Uploading to GDrive...__\n" + \
-                        "```[{}{}]({}%)```\n" + \
+                        "```\n[{}{}]({}%)```\n" + \
                         "**File Name** : `{}`\n" + \
                         "**File Size** : `{}`\n" + \
                         "**Uploaded** : `{}`\n" + \
@@ -343,7 +347,7 @@ class _GDrive:
                     eta = round((f_size - downloaded) / speed)
                     tmp = \
                         "__Downloading From GDrive...__\n" + \
-                        "```[{}{}]({}%)```\n" + \
+                        "```\n[{}{}]({}%)```\n" + \
                         "**File Name** : `{}`\n" + \
                         "**File Size** : `{}`\n" + \
                         "**Downloaded** : `{}`\n" + \
@@ -439,7 +443,7 @@ class _GDrive:
         percentage = (self._completed / self._list) * 100
         tmp = \
             "__Copying Files In GDrive...__\n" + \
-            "```[{}{}]({}%)```\n" + \
+            "```\n[{}{}]({}%)```\n" + \
             "**Completed** : `{}/{}`"
         self._progress = tmp.format(
             "".join((config.FINISHED_PROGRESS_STR
@@ -617,9 +621,9 @@ class Worker(_GDrive):
                                              redirect_uri=REDIRECT_URI)
             reply_string = f"please visit {_AUTH_FLOW.step1_get_authorize_url()} and "
             reply_string += "send back "
-            reply_string += "<code>.gconf [auth_code]</code>"
+            reply_string += "<code>.gconf [auth_code or url]</code>"
             await self._message.edit(
-                text=reply_string, disable_web_page_preview=True)
+                text=reply_string, link_preview_options=LinkPreviewOptions(is_disabled=True))
 
     async def confirm_setup(self) -> None:
         """ Finalize GDrive setup """
@@ -628,16 +632,20 @@ class Worker(_GDrive):
             await self._message.edit("Please run `.gsetup` first", del_in=5)
             return
         await self._message.edit("Checking Auth Code...")
+        code = self._message.input_str
+        if code.startswith(REDIRECT_URI):
+            code = parse_qs(urlparse(code).query).get('code')
+            if isinstance(code, list):
+                code = code[0]
         try:
-            cred = _AUTH_FLOW.step2_exchange(self._message.input_str)
+            cred = _AUTH_FLOW.step2_exchange(code)
         except FlowExchangeError as c_i:
             _LOG.exception(c_i)
             await self._message.err(str(c_i))
         else:
             _AUTH_FLOW = None
-            await asyncio.gather(
-                _set_creds(cred),
-                self._message.edit("`Saved GDrive Creds!`", del_in=3, log=__name__))
+            await _set_creds(cred)
+            await self._message.edit("`Saved GDrive Creds!`", del_in=3, log=__name__)
 
     async def clear(self) -> None:
         """ Clear Creds """
@@ -671,8 +679,11 @@ class Worker(_GDrive):
             _LOG.exception(h_e)
             await self._message.err(h_e._get_reason())  # pylint: disable=protected-access
             return
-        await self._message.edit(f"**Shareable Links**\n\n{out}",
-                                 disable_web_page_preview=True, log=__name__)
+        await self._message.edit(
+            f"**Shareable Links**\n\n{out}",
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+            log=__name__
+        )
 
     @creds_dec
     async def search(self) -> None:
@@ -686,7 +697,7 @@ class Worker(_GDrive):
             await self._message.err(h_e._get_reason())  # pylint: disable=protected-access
             return
         await self._message.edit_or_send_as_file(
-            out, disable_web_page_preview=True,
+            out, link_preview_options=LinkPreviewOptions(is_disabled=True),
             caption=f"search results for `{self._message.filtered_input_str}`")
 
     @creds_dec
@@ -704,8 +715,11 @@ class Worker(_GDrive):
             _LOG.exception(h_e)
             await self._message.err(h_e._get_reason())  # pylint: disable=protected-access
             return
-        await self._message.edit(f"**Folder Created Successfully**\n\n{out}",
-                                 disable_web_page_preview=True, log=__name__)
+        await self._message.edit(
+            f"**Folder Created Successfully**\n\n{out}",
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+            log=__name__
+        )
 
     @creds_dec
     async def list_folder(self) -> None:
@@ -726,7 +740,10 @@ class Worker(_GDrive):
             await self._message.err(h_e._get_reason())  # pylint: disable=protected-access
             return
         await self._message.edit_or_send_as_file(
-            out, disable_web_page_preview=True, caption=f"list results for `{file_id}`")
+            out,
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+            caption=f"list results for `{file_id}`"
+        )
 
     @creds_dec
     async def upload(self) -> None:
@@ -781,7 +798,11 @@ class Worker(_GDrive):
             out = self._output
         else:
             out = "`failed to upload.. check logs?`"
-        await self._message.edit(out, disable_web_page_preview=True, log=__name__)
+        await self._message.edit(
+            out,
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+            log=__name__
+        )
 
     @creds_dec
     async def download(self) -> None:
@@ -805,7 +826,13 @@ class Worker(_GDrive):
             out = self._output
         else:
             out = "`failed to download.. check logs?`"
-        await self._message.edit(out, disable_web_page_preview=True, log=__name__)
+        await self._message.edit(
+            out,
+            link_preview_options=LinkPreviewOptions(
+                is_disabled=True
+            ),
+            log=__name__
+        )
 
     @creds_dec
     async def copy(self) -> None:
@@ -832,7 +859,11 @@ class Worker(_GDrive):
             out = self._output
         else:
             out = "`failed to copy.. check logs?`"
-        await self._message.edit(out, disable_web_page_preview=True, log=__name__)
+        await self._message.edit(
+            out,
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+            log=__name__
+        )
 
     @creds_dec
     async def move(self) -> None:
@@ -891,7 +922,7 @@ class Worker(_GDrive):
             return
         out = f"**I Found these Details for** `{file_id}`\n\n{meta_data}"
         await self._message.edit_or_send_as_file(
-            out, disable_web_page_preview=True,
+            out, link_preview_options=LinkPreviewOptions(is_disabled=True),
             caption=f"metadata for `{file_id}`")
 
     @creds_dec
@@ -907,7 +938,7 @@ class Worker(_GDrive):
             return
         out = f"**I Found these Permissions for** `{file_id}`\n\n{out}"
         await self._message.edit_or_send_as_file(
-            out, disable_web_page_preview=True,
+            out, link_preview_options=LinkPreviewOptions(is_disabled=True),
             caption=f"view perm results for `{file_id}`")
 
     @creds_dec
@@ -922,7 +953,7 @@ class Worker(_GDrive):
             await self._message.err(h_e._get_reason())  # pylint: disable=protected-access
         else:
             out = f"**Set Permissions successfully for** `{file_id}`\n\n{link}"
-            await self._message.edit(out, disable_web_page_preview=True)
+            await self._message.edit(out, link_preview_options=LinkPreviewOptions(is_disabled=True))
 
     @creds_dec
     async def del_perms(self) -> None:
@@ -937,7 +968,7 @@ class Worker(_GDrive):
             return
         out = f"**Removed These Permissions successfully from** `{file_id}`\n\n{out}"
         await self._message.edit_or_send_as_file(
-            out, disable_web_page_preview=True,
+            out, link_preview_options=LinkPreviewOptions(is_disabled=True),
             caption=f"removed perm results for `{file_id}`")
 
 
@@ -954,12 +985,18 @@ async def gsetup_(message: Message):
     else:
         await message.edit(
             "`G_DRIVE_CLIENT_ID` and `G_DRIVE_CLIENT_SECRET` not found!\n"
-            f"[Read this]({link}) to know more.", disable_web_page_preview=True)
+            f"[Read this]({link}) to know more.",
+            link_preview_options=LinkPreviewOptions(is_disabled=True)
+        )
 
 
 @userge.on_cmd("gconf", about={
     'header': "Confirm GDrive Setup",
-    'usage': "{tr}gconf [auth token]"})
+    'usage': "{tr}gconf [auth code or url]",
+    'examples': [
+        "{tr}gconf 4/0AX5XfWjgra2oHuQymWng7IzlqWrQ9icjRzcHryjJ4xhBpFsX0xmk_SUwjveF8c_AEd4k6A",
+        "{tr}gconf http://localhost:5000/?code=4/0AX5XfWjgra2oHuQymWng7IzlqWrQ9icjRzcHryjJ4x"
+        "hBpFsX0xmk_SUwjveF2c_AEd3k8A&scope=https://www.googleapis.com/auth/drive"]})
 async def gconf_(message: Message):
     """ confirm creds """
     await Worker(message).confirm_setup()

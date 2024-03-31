@@ -8,12 +8,9 @@
 #
 # All rights reserved.
 
-import os
-
 import speedtest
-import wget
 
-from userge import userge, Message, pool
+from userge import userge, Message
 from userge.utils import humanbytes
 
 CHANNEL = userge.getCLogger(__name__)
@@ -29,12 +26,14 @@ async def speedtst(message: Message):
         test.download()
         await message.try_to_edit("`Performing upload test . . .`")
         test.upload()
-        test.results.share()
+        try:
+            test.results.share()
+        except speedtest.ShareResultsConnectFailure:
+            pass
         result = test.results.dict()
     except Exception as e:
         await message.err(e)
         return
-    path = await pool.run_in_thread(wget.download)(result['share'])
     output = f"""**--Started at {result['timestamp']}--
 
 Client:
@@ -54,9 +53,11 @@ Sent: `{humanbytes(result['bytes_sent'])}`
 Received: `{humanbytes(result['bytes_received'])}`
 Download: `{humanbytes(result['download'] / 8)}/s`
 Upload: `{humanbytes(result['upload'] / 8)}/s`**"""
-    msg = await message.client.send_photo(chat_id=message.chat.id,
-                                          photo=path,
-                                          caption=output)
+    if result['share']:
+        msg = await message.client.send_photo(chat_id=message.chat.id,
+                                              photo=result['share'],
+                                              caption=output)
+    else:
+        msg = await message.client.send_message(chat_id=message.chat.id, text=output)
     await CHANNEL.fwd_msg(msg)
-    os.remove(path)
     await message.delete()

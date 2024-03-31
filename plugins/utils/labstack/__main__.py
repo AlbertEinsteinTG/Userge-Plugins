@@ -22,6 +22,10 @@ from urllib.parse import unquote_plus
 import requests
 from pySmartDL import SmartDL
 
+from pyrogram.types import (
+    LinkPreviewOptions
+)
+
 from userge import userge, config, Message
 from userge.utils import progress, humanbytes
 
@@ -65,7 +69,7 @@ async def labstack(message: Message):
                     estimated_total_time = downloader.get_eta(human=True)
                     progress_str = \
                         "__{}__\n" + \
-                        "```[{}{}]```\n" + \
+                        "```\n[{}{}]```\n" + \
                         "**Progress** : `{}%`\n" + \
                         "**URL** : `{}`\n" + \
                         "**FILENAME** : `{}`\n" + \
@@ -76,9 +80,9 @@ async def labstack(message: Message):
                     progress_str = progress_str.format(
                         "Downloading",
                         ''.join((config.FINISHED_PROGRESS_STR
-                                 for i in range(math.floor(percentage / 5)))),
+                                 for _ in range(math.floor(percentage / 5)))),
                         ''.join((config.UNFINISHED_PROGRESS_STR
-                                 for i in range(20 - math.floor(percentage / 5)))),
+                                 for _ in range(20 - math.floor(percentage / 5)))),
                         round(percentage, 2),
                         url,
                         file_name,
@@ -89,7 +93,12 @@ async def labstack(message: Message):
                     count += 1
                     if count >= 5:
                         count = 0
-                        await message.try_to_edit(progress_str, disable_web_page_preview=True)
+                        await message.try_to_edit(
+                            progress_str,
+                            link_preview_options=LinkPreviewOptions(
+                                is_disabled=True
+                            )
+                        )
                     await asyncio.sleep(1)
             except Exception as d_e:
                 await message.err(d_e)
@@ -133,12 +142,10 @@ async def labstack(message: Message):
     files = {
         'files': (filename, open(dl_loc, 'rb')),
     }
-    send_url = "https://up.labstack.com/api/v1/links/{}/send".format(
-        r['code'])
+    send_url = f"https://up.labstack.com/api/v1/links/{r['code']}/send"
     response = requests.post(send_url, files=files, **kwargs)
-    if (response.status_code) == 200:
-        link = (
-            "https://up.labstack.com/api/v1/links/{}/receive".format(r['code']))
+    if response.status_code == 200:
+        link = f"https://up.labstack.com/api/v1/links/{r['code']}/receive"
         await message.edit(f"**Filename**: `{filename}`\n**Size**: "
                            f"`{humanbytes(filesize)}`\n\n"
                            f"**Link**: {link}\n`Expires in 7 Days`")

@@ -15,6 +15,11 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 
+from pyrogram import enums
+from pyrogram.types import (
+    LinkPreviewOptions
+)
+
 from userge import userge, Message, config
 from userge.utils import take_screen_shot
 
@@ -26,7 +31,7 @@ from userge.utils import take_screen_shot
 async def google_rs(message: Message):
     start = datetime.now()
     dis_loc = ''
-    base_url = "http://www.google.com"
+    base_url = "https://www.google.com"
     out_str = "Reply to an image to do Google Reverse Search"
     if message.reply_to_message:
         await message.edit("Downloading Media to my Local")
@@ -83,4 +88,10 @@ async def google_rs(message: Message):
 <b>More Info</b>: Open this <a href="{the_location}">Link</a>
 
 <b>Time Taken</b>: {ms} seconds"""
-    await message.edit(out_str, parse_mode="HTML", disable_web_page_preview=True)
+    await message.edit(
+        out_str,
+        parse_mode=enums.ParseMode.HTML,
+        link_preview_options=LinkPreviewOptions(
+            is_disabled=True
+        )
+    )

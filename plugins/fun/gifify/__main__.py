@@ -43,7 +43,7 @@ async def gifify(msg: Message):
         quality = 512
     if not os.path.isdir(config.Dynamic.DOWN_PATH):
         os.makedirs(config.Dynamic.DOWN_PATH)
-    await msg.try_to_edit("```Converting this Sticker to GiF...\n"
+    await msg.try_to_edit("```\nConverting this Sticker to GiF...\n"
                           "This may takes upto few mins...```")
     dls = await msg.client.download_media(replied, file_name=config.Dynamic.DOWN_PATH)
     converted_gif = await _tgs_to_gif(dls, quality)
@@ -51,7 +51,7 @@ async def gifify(msg: Message):
         msg.chat.id,
         converted_gif,
         unsave=True,
-        reply_to_message_id=replied.message_id)
+        reply_to_message_id=replied.id)
     await msg.delete()
     os.remove(converted_gif)
 

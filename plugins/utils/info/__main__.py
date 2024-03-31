@@ -12,11 +12,14 @@
 # By @Krishna_Singhal
 
 import json
-from datetime import datetime
+from typing import Optional
 
 import aiohttp
 import spamwatch
 from UsergeAntiSpamApi import Client
+
+from pyrogram.types import User, LinkPreviewOptions
+from pyrogram import enums
 
 from userge import userge, Message, get_collection
 from .. import info
@@ -72,15 +75,15 @@ async def _info(msg: Message):
                 user_info += "\n**Userge Antispam API Banned** : `False`"
             else:
                 user_info += "\n**Userge Antispam API Banned** : `True`"
-                user_info += f"\n    **● Reason** : `{ban.reason or None}`"
+                user_info += f"\n    **● Reason** : `{reduce_spam(ban.reason or None)}`"
         if info.SPAM_WATCH_API:
             status = spamwatch.Client(info.SPAM_WATCH_API).get_ban(user.id)
             if status is False:
-                user_info += "\n**SpamWatch Banned** : `False`\n"
+                user_info += "\n**SpamWatch Banned** : `False`"
             else:
-                user_info += "\n**SpamWatch Banned** : `True`\n"
-                user_info += f"    **● Reason** : `{status.reason or None}`\n"
-                user_info += f"    **● Message** : `{status.message or None}`\n"
+                user_info += "\n**SpamWatch Banned** : `True`"
+                user_info += f"\n    **● Reason** : `{reduce_spam(status.reason or None)}`"
+                user_info += f"\n    **● Message** : `{reduce_spam(status.message or None)}`"
 
         async with aiohttp.ClientSession() as ses, ses.get(
             f'https://api.cas.chat/check?user_id={user.id}'
@@ -91,37 +94,48 @@ async def _info(msg: Message):
 
         if cas_banned['ok']:
             reason = cas_banned['result']['messages'][0] or None
-            user_info += "**AntiSpam Banned** : `True`\n"
-            user_info += f"    **● Reason** : `{reason}`\n"
+            user_info += "\n**CAS AntiSpam Banned** : `True`"
+            user_info += f"\n    **● Reason** : `{reduce_spam(reason)}`"
         else:
-            user_info += "**AntiSpam Banned** : `False`\n"
+            user_info += "\n**CAS AntiSpam Banned** : `False`"
         if user_gmuted:
-            user_info += "**User GMuted** : `True`\n"
-            user_info += f"    **● Reason** : `{user_gmuted['reason'] or None}`\n"
+            user_info += "\n**User GMuted** : `True`"
+            user_info += f"\n    **● Reason** : `{reduce_spam(user_gmuted['reason'] or None)}`"
         else:
-            user_info += "**User GMuted** : `False`\n"
+            user_info += "\n**User GMuted** : `False`"
         if user_gbanned:
-            user_info += "**User GBanned** : `True`\n"
-            user_info += f"    **● Reason** : `{user_gbanned['reason'] or None}`"
+            user_info += "\n**User GBanned** : `True`"
+            user_info += f"\n    **● Reason** : `{reduce_spam(user_gbanned['reason'] or None)}`"
         else:
-            user_info += "**User Gbanned** : `False`"
-        await msg.edit_or_send_as_file(text=user_info, disable_web_page_preview=True)
+            user_info += "\n**User Gbanned** : `False`"
+        await msg.edit_or_send_as_file(
+            text=user_info,
+            link_preview_options=LinkPreviewOptions(
+                is_disabled=True
+            )
+        )
 
 
-def last_online(user):
+def reduce_spam(text: Optional[str]) -> Optional[str]:
+    if text and len(text) > 100:
+        return text[:97] + "..."
+    return text
+
+
+def last_online(user: User):
     time = ""
     if user.is_bot:
         time += "🤖 Bot :("
-    elif user.status == 'recently':
+    elif user.status == enums.UserStatus.RECENTLY:
         time += "Recently"
-    elif user.status == 'within_week':
+    elif user.status == enums.UserStatus.LAST_WEEK:
         time += "Within the last week"
-    elif user.status == 'within_month':
+    elif user.status == enums.UserStatus.LAST_MONTH:
         time += "Within the last month"
-    elif user.status == 'long_time_ago':
+    elif user.status == enums.UserStatus.LONG_AGO:
         time += "A long time ago :("
-    elif user.status == 'online':
+    elif user.status == enums.UserStatus.ONLINE:
         time += "Currently Online"
-    elif user.status == 'offline':
-        time += datetime.fromtimestamp(user.last_online_date).strftime("%a, %d %b %Y, %H:%M:%S")
+    elif user.status == enums.UserStatus.OFFLINE:
+        time += user.last_online_date.strftime("%a, %d %b %Y, %H:%M:%S")
     return time

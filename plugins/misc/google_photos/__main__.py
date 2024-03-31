@@ -25,6 +25,7 @@ import aiohttp
 from apiclient.discovery import build
 from httplib2 import Http
 from oauth2client import file, client
+from pyrogram import enums
 
 from userge import userge, Message, config
 from userge.plugins.misc.download import tg_download, url_download
@@ -81,21 +82,23 @@ async def create_token_file():
         code = response.text.strip()
         credentials = flow.step2_exchange(code)
         storage = file.Storage(TOKEN_FILE_NAME)
+        credentials.client_id += ""
+        credentials.client_secret += ""
         storage.put(credentials)
         imp_gsem = await conv.send_document(document=TOKEN_FILE_NAME)
         await imp_gsem.reply_text(
             "#GPHOTOS #setup #completed\n\n"
             "please set <code>G_PHOTOS_AUTH_TOKEN_ID</code> = "
-            f"<u>{imp_gsem.message_id}</u> ..!"
+            f"<u>{imp_gsem.id}</u> ..!"
             "\n\n<i>This is only required, "
             "if you are running in an ephimeral file-system</i>.",
-            parse_mode="html"
+            parse_mode=enums.ParseMode.HTML
         )
         return storage
 
 
 async def check_creds(message):
-    if google_photos.G_PHOTOS_AUTH_TOKEN_ID:
+    if not os.path.exists(TOKEN_FILE_NAME) and google_photos.G_PHOTOS_AUTH_TOKEN_ID:
         confidential_message = await message.client.get_messages(
             chat_id=config.LOG_CHANNEL_ID,
             message_ids=google_photos.G_PHOTOS_AUTH_TOKEN_ID,
@@ -122,7 +125,7 @@ async def check_creds(message):
 async def upload_google_photos(message: Message):
     creds = await check_creds(message)
     if not creds:
-        await message.edit_text("😏 <code>gpsetup</code> first 😡😒😒", parse_mode="html")
+        await message.edit_text("😏 <code>gpsetup</code> first 😡😒😒", parse_mode=enums.ParseMode.HTML)
         return
     path_ = ""
     if message.input_str:
@@ -172,7 +175,7 @@ async def upload_google_photos(message: Message):
                     "X-Goog-Upload-Offset": str(offset),
                     "Authorization": "Bearer " + creds.access_token,
                 }
-                response = await session.post(real_upload_url, headers=headers, data=current_chunk)
+                await session.post(real_upload_url, headers=headers, data=current_chunk)
                 loop.create_task(progress(offset + part_size, file_size,
                                           message, "uploading(gphoto)🧐?"))
                 # LOG.info(response.headers)

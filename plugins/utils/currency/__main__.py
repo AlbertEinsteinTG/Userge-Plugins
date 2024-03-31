@@ -13,6 +13,11 @@ import json
 import aiohttp
 from emoji import get_emoji_regexp
 
+from pyrogram import enums
+from pyrogram.types import (
+    LinkPreviewOptions
+)
+
 from userge import userge, Message
 from .. import currency
 
@@ -33,8 +38,8 @@ async def cur_conv(message: Message):
             "<code>Oops!!get the API from</code> "
             "<a href='https://free.currencyconverterapi.com'>HERE</a> "
             "<code>& add it to Heroku config vars</code> (<code>CURRENCY_API</code>)",
-            disable_web_page_preview=True,
-            parse_mode="html", del_in=0)
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+            parse_mode=enums.ParseMode.HTML, del_in=0)
         return
 
     filterinput = get_emoji_regexp().sub(u'', message.input_str)

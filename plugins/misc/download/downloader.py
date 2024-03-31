@@ -19,6 +19,8 @@ from urllib.parse import unquote_plus
 
 from pySmartDL import SmartDL
 from pyrogram.types import Message as PyroMessage
+from pyrogram import enums
+from pyrogram.types import LinkPreviewOptions
 
 from userge import Message, config
 from userge.utils import progress, humanbytes, extract_entities
@@ -33,7 +35,7 @@ async def handle_download(message: Message, resource: Union[Message, str],
     if resource.media_group_id:
         resources = await message.client.get_media_group(
             resource.chat.id,
-            resource.message_id
+            resource.id
         )
         dlloc, din = [], 0
         for res in resources:
@@ -90,7 +92,7 @@ async def url_download(message: Message, url: str) -> Tuple[str, int]:
             estimated_total_time = downloader.get_eta(human=True)
             progress_str = \
                 "__{}__\n" + \
-                "```[{}{}]```\n" + \
+                "```\n[{}{}]```\n" + \
                 "**Progress** : `{}%`\n" + \
                 "**URL** : `{}`\n" + \
                 "**FILENAME** : `{}`\n" + \
@@ -111,7 +113,12 @@ async def url_download(message: Message, url: str) -> Tuple[str, int]:
                 humanbytes(total_length),
                 speed,
                 estimated_total_time)
-            await message.edit(progress_str, disable_web_page_preview=True)
+            await message.edit(
+                progress_str,
+                link_preview_options=LinkPreviewOptions(
+                    is_disabled=True
+                )
+            )
             await asyncio.sleep(config.Dynamic.EDIT_SLEEP_TIMEOUT)
     if message.process_is_canceled:
         raise ProcessCanceled
@@ -124,7 +131,9 @@ async def tg_download(
     """ download from tg file """
     if not to_download.media:
         dl_loc, mite = [], 0
-        ets = extract_entities(to_download, ["url", "text_link"])
+        ets = extract_entities(
+            to_download, [
+                enums.MessageEntityType.URL, enums.MessageEntityType.TEXT_LINK])
         if len(ets) == 0:
             raise Exception("nothing found to download")
         for uarl in ets:
@@ -143,7 +152,8 @@ async def tg_download(
     elif "|" in message.filtered_input_str:
         _, c_file_name = message.filtered_input_str.split("|", maxsplit=1)
         if c_file_name:
-            custom_file_name = os.path.join(config.Dynamic.DOWN_PATH, c_file_name.strip())
+            custom_file_name = os.path.join(
+                config.Dynamic.DOWN_PATH, c_file_name.strip())
     with message.cancel_callback():
         dl_loc = await message.client.download_media(
             message=to_download,

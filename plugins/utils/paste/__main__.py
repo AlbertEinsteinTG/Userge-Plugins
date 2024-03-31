@@ -16,6 +16,8 @@ import aiofiles
 import aiohttp
 from aiohttp import client_exceptions
 
+from pyrogram.types import LinkPreviewOptions
+
 from userge import userge, Message, config
 
 
@@ -45,7 +47,7 @@ class PasteService:
 
     # pylint: disable = W0613, R0201
     async def paste(self, ses: aiohttp.ClientSession,
-                    text: str, file_type: Optional[str]) -> Optional[str]:
+                    text: str, file_type: Optional[str]) -> Optional[str]:  # skipcq: PYL-W0613
         """ returns the success url or None if failed """
         return None
 
@@ -105,7 +107,7 @@ class Rentry(PasteService):
         if not token:
             return None
         if file_type:
-            text = f"```{file_type}\n" + text + "\n```"
+            text = f"```\n{file_type}\n" + text + "\n```"
         async with ses.post(self._url,
                             data=dict(csrfmiddlewaretoken=token, text=text),
                             headers=dict(Referer=self._url)) as resp:
@@ -268,7 +270,7 @@ async def paste_(message: Message) -> None:
             await message.edit(f"`Failed to reach {service.get_name().title()}`", del_in=5)
         else:
             await message.edit(f"**{service.get_name().title()}** [URL]({url})",
-                               disable_web_page_preview=True)
+                               link_preview_options=LinkPreviewOptions(is_disabled=True))
 
 
 @userge.on_cmd("getpaste", about={

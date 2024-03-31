@@ -11,6 +11,7 @@
 import os
 
 from pyrogram.errors.exceptions.bad_request_400 import BotMethodInvalid
+from pyrogram import enums
 
 from userge import userge, Message
 
@@ -36,7 +37,7 @@ async def who_is(message: Message):
         await message.err("no valid user_id or message specified")
         return
     if from_user or from_chat is not None:
-        pp_c = await message.client.get_profile_photos_count(from_user.id)
+        pp_c = await message.client.get_chat_photos_count(from_user.id)
         message_out_str = "<b>USER INFO:</b>\n\n"
         message_out_str += f"<b>🗣 First Name:</b> <code>{from_user.first_name}</code>\n"
         message_out_str += f"<b>🗣 Last Name:</b> <code>{from_user.last_name}</code>\n"
@@ -46,6 +47,7 @@ async def who_is(message: Message):
         message_out_str += f"<b>🚫 Is Restricted:</b> <code>{from_user.is_scam}</code>\n"
         message_out_str += "<b>✅ Is Verified by Telegram:</b> "
         message_out_str += f"<code>{from_user.is_verified}</code>\n"
+        message_out_str += f"<b>⭐ Is Premium:</b> <code>{from_user.is_premium}</code>\n"
         message_out_str += f"<b>🕵️‍♂️ User ID:</b> <code>{from_user.id}</code>\n"
         message_out_str += f"<b>🖼 Profile Photos:</b> <code>{pp_c}</code>\n"
         try:
@@ -68,7 +70,7 @@ async def who_is(message: Message):
             await message.client.send_photo(chat_id=message.chat.id,
                                             photo=local_user_photo,
                                             caption=message_out_str,
-                                            parse_mode="html",
+                                            parse_mode=enums.ParseMode.HTML,
                                             disable_notification=True)
             os.remove(local_user_photo)
             await message.delete()

@@ -14,7 +14,11 @@ import shutil
 
 from PIL import Image
 from google_images_search import GoogleImagesSearch as GIS
-from pyrogram.types import InputMediaPhoto
+from pyrogram import enums
+from pyrogram.types import (
+    InputMediaPhoto,
+    LinkPreviewOptions
+)
 
 from userge import userge, Message
 from .. import google_img as gimg
@@ -46,7 +50,7 @@ option and for "Sites to search" option select "Search the entire
     'examples': "{tr}gimg Dogs"})
 async def google_img(message: Message):
     if (gimg.GCS_API_KEY and gimg.GCS_IMAGE_E_ID) is None:
-        await message.edit(REQ_ERR, disable_web_page_preview=True)
+        await message.edit(REQ_ERR, link_preview_options=LinkPreviewOptions(is_disabled=True))
         return
     if os.path.exists(PATH):
         shutil.rmtree(PATH, ignore_errors=True)
@@ -80,7 +84,7 @@ async def google_img(message: Message):
         ss.append(InputMediaPhoto(str(imgs)))
         if len(ss) == 9:
             break
-    await message.reply_chat_action("upload_photo")
+    await message.reply_chat_action(enums.ChatAction.UPLOAD_PHOTO)
     await message.reply_media_group(ss, True)
     shutil.rmtree(PATH, ignore_errors=True)
     await message.delete()
